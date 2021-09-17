@@ -1,0 +1,103 @@
+/**
+ * train.ino
+ *
+ *  Created on: 24.07.2018
+ *
+ */
+
+#include <Arduino.h>
+
+#include <ESP8266WiFi.h>
+#include <ESP8266WiFiMulti.h>
+
+#include <ESP8266HTTPClient.h>
+#include <TinyGPS++.h>
+#include <SoftwareSerial.h>
+#include <String.h>
+#define USE_SERIAL Serial
+
+ESP8266WiFiMulti WiFiMulti;
+
+
+static const int RXPin = D6, TXPin = D7;
+static const uint32_t GPSBaud = 9600;
+
+String url,lati,longi;
+
+
+// The TinyGPS++ object
+TinyGPSPlus gps;
+
+// The serial connection to the GPS device
+SoftwareSerial ss(RXPin, TXPin);
+
+void setup() {
+
+    USE_SERIAL.begin(115200);
+   // USE_SERIAL.setDebugOutput(true);
+    ss.begin(GPSBaud);
+    USE_SERIAL.println();
+    USE_SERIAL.println();
+    USE_SERIAL.println();
+
+    for(uint8_t t = 4; t > 0; t--) {
+        USE_SERIAL.printf("[SETUP] WAIT %d...\n", t);
+        USE_SERIAL.flush();
+        delay(1000);
+    }
+
+    WiFi.mode(WIFI_STA);
+    WiFiMulti.addAP("F For Family", "drabdullatif197116");
+
+}
+
+void loop() {
+    // wait for WiFi connection
+    while (ss.available() > 0){
+    gps.encode(ss.read());
+    if (gps.location.isUpdated()){
+      // Latitude in degrees (double)
+      Serial.print("Latitude= "); 
+      lati = String(gps.location.lat(), 6);
+      Serial.print(lati);      
+      // Longitude in degrees (double)
+      Serial.print(" Longitude= ");
+      longi = String(gps.location.lng(), 6);
+      Serial.println(longi); 
+      url = "https://www.google.com/maps/@"+lati+","+longi;
+      Serial.println("Google link: "+url);
+
+  }
+    if((WiFiMulti.run() == WL_CONNECTED)) {
+
+        HTTPClient http;
+
+        USE_SERIAL.print("[HTTP] begin...\n");
+        // configure traged server and url
+        //http.begin("https://192.168.1.12/test.html", "7a 9c f4 db 40 d3 62 5a 6e 21 bc 5c cc 66 c8 3e a1 45 59 38"); //HTTPS
+       http.begin("http://api.thingspeak.com/update?api_key=JIHXH93VTKCDQMXY&field1="+longi+"&field2="+lati); //HTTP
+
+        USE_SERIAL.print("[HTTP] GET...\n");
+        // start connection and send HTTP header
+        int httpCode = http.GET();
+
+        // httpCode will be negative on error
+        if(httpCode > 0) {
+            // HTTP header has been send and Server response header has been handled
+            USE_SERIAL.printf("[HTTP] GET... code: %d\n", httpCode);
+
+            // file found at server
+            if(httpCode == HTTP_CODE_OK) {
+                String payload = http.getString();
+                USE_SERIAL.println(payload);
+            }
+        } else {
+            USE_SERIAL.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
+        }
+
+        http.end();
+    }
+   }
+  delay(3000);
+}
+
